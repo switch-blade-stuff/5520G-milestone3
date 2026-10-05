@@ -24,25 +24,19 @@ output_topic = "csv-converted"
 output_topic_path = publisher.topic_path(project_id, output_topic)
 
 
-class FilterDoFn(beam.DoFn):
-
-    def process(self, data):
-        if not (
-            data["temperature"]
-            is None | data["humidity"]
-            is None | data["pressure"]
-            is None
-        ):
-            yield data
+def filter_row(data):
+    return (
+        data["temperature"]
+        is None | data["humidity"]
+        is None | data["pressure"]
+        is None
+    )
 
 
-class ConvertDoFn(beam.DoFn):
-
-    def process(self, data):
-        logging.getLogger().info(f"processing {data}")
-        data["temperature"] = data["temperature"] * 1.8 + 32
-        data["pressure"] = data["pressure"] / 6.895
-        yield data
+def convert_row(data):
+    data["temperature"] = data["temperature"] * 1.8 + 32
+    data["pressure"] = data["pressure"] / 6.895
+    return data
 
 
 def run(argv=None):
@@ -59,8 +53,8 @@ def run(argv=None):
             p
             | "Read from Pub/Sub" >> beam.io.ReadFromPubSub(topic=input_topic_path)
             | "toDict" >> beam.Map(lambda x: json.loads(x))
-            | "Filter" >> beam.ParDo(FilterDoFn())
-            | "Convert" >> beam.ParDo(ConvertDoFn())
+            | "Filter" >> beam.Filter(filter_row)
+            | "Convert" >> beam.Map(convert_row)
         )
         rows | "to byte" >> beam.Map(
             lambda x: json.dumps(x).encode("utf8")
