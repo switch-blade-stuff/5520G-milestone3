@@ -24,38 +24,42 @@ output_topic = "csv-converted"
 output_topic_path = publisher.topic_path(project_id, output_topic)
 
 
+class FilterDoFn(beam.DoFn):
+
+    def process(self, data):
+        if not (
+            data["temperature"]
+            is None | data["humidity"]
+            is None | data["pressure"]
+            is None
+        ):
+            yield data
+
+
 class ConvertDoFn(beam.DoFn):
 
     def process(self, data):
         logging.getLogger().info(f"processing {data}")
         data["temperature"] = data["temperature"] * 1.8 + 32
         data["pressure"] = data["pressure"] / 6.895
-        return data
-
-
-def filter_row(data):
-    return (
-        data["temperature"]
-        is None | data["humidity"]
-        is None | data["pressure"]
-        is None
-    )
+        yield data
 
 
 def run(argv=None):
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
+    parser = argparse.ArgumentParser()
     known_args, pipeline_args = parser.parse_known_args(argv)
-    pipeline_options = PipelineOptions(pipeline_args)
-    pipeline_options.view_as(SetupOptions).save_main_session = True
+    pipeline_options = PipelineOptions(
+        pipeline_args,
+        streaming=True,  # Required for Pub/Sub streaming
+        save_main_session=True,
+    )
 
     with beam.Pipeline(options=pipeline_options) as p:
         rows = (
             p
             | "Read from Pub/Sub" >> beam.io.ReadFromPubSub(topic=input_topic_path)
             | "toDict" >> beam.Map(lambda x: json.loads(x))
-            | "Filter" >> beam.Filter(filter_row)
+            | "Filter" >> beam.ParDo(FilterDoFn())
             | "Convert" >> beam.ParDo(ConvertDoFn())
         )
         rows | "to byte" >> beam.Map(
