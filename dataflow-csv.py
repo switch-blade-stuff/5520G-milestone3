@@ -26,10 +26,9 @@ output_topic_path = publisher.topic_path(project_id, output_topic)
 
 def filter_row(data):
     return (
-        data["temperature"]
-        is None | data["humidity"]
-        is None | data["pressure"]
-        is None
+        (data["temperature"] is None)
+        | (data["humidity"] is None)
+        | (data["pressure"] is None)
     )
 
 
